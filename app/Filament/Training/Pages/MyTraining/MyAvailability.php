@@ -152,7 +152,7 @@ class MyAvailability extends Page implements HasForms, HasTable
 
         $this->seededRowIds = $this->seededRowIdsForVisitedDates();
 
-        $this->slotForm->fill($this->getDefaultAvailabilityTimes());
+        $this->slotForm->fill($this->getDefaultSlotFormTimes());
     }
 
     public function updatedMode(): void
@@ -508,7 +508,7 @@ class MyAvailability extends Page implements HasForms, HasTable
                 }
 
                 $user->setAvailabilityDefaults($data['from'], $data['to']);
-                $this->slotForm->fill($this->getDefaultAvailabilityTimes());
+                $this->slotForm->fill($this->getDefaultSlotFormTimes());
 
                 Notification::make()->title('Default availability times saved')->success()->send();
             });
@@ -528,18 +528,18 @@ class MyAvailability extends Page implements HasForms, HasTable
                     ->label('From')
                     ->required()
                     ->searchable()
-                    ->allowHtml(false)
-                    ->searchPrompt('Type a time (e.g. 18:30) to filter the list')
-                    ->options($this->generateTimeOptions())
+                    ->searchValues()
+                    ->searchPrompt('Type a time (e.g. 18:30 or 1830) to filter the list')
+                    ->options($this->generateSearchableTimeOptions())
                     ->optionsLimit(100),
 
                 Select::make('to')
                     ->label('To')
                     ->required()
                     ->searchable()
-                    ->allowHtml(false)
-                    ->searchPrompt('Type a time (e.g. 18:30) to filter the list')
-                    ->options($this->generateTimeOptions())
+                    ->searchValues()
+                    ->searchPrompt('Type a time (e.g. 18:30 or 1830) to filter the list')
+                    ->options($this->generateSearchableTimeOptions())
                     ->optionsLimit(100),
             ])
             ->statePath('slotData');
@@ -563,8 +563,11 @@ class MyAvailability extends Page implements HasForms, HasTable
             return;
         }
 
-        $startTime = Carbon::parse("{$startDate->toDateString()} {$data['from']}", 'UTC');
-        $endTime = Carbon::parse("{$startDate->toDateString()} {$data['to']}", 'UTC');
+        $from = $this->formatSlotFormTime($data['from']);
+        $to = $this->formatSlotFormTime($data['to']);
+
+        $startTime = Carbon::parse("{$startDate->toDateString()} {$from}", 'UTC');
+        $endTime = Carbon::parse("{$startDate->toDateString()} {$to}", 'UTC');
 
         if (! $this->getAvailabilityService()->meetsMinimumDuration($startTime, $endTime)) {
             Notification::make()
@@ -581,8 +584,8 @@ class MyAvailability extends Page implements HasForms, HasTable
             $dateString = $date->toDateString();
 
             $ranges[] = [
-                Carbon::parse("{$dateString} {$data['from']}", 'UTC'),
-                Carbon::parse("{$dateString} {$data['to']}", 'UTC'),
+                Carbon::parse("{$dateString} {$from}", 'UTC'),
+                Carbon::parse("{$dateString} {$to}", 'UTC'),
             ];
         }
 
@@ -605,7 +608,7 @@ class MyAvailability extends Page implements HasForms, HasTable
             Notification::make()->title("{$addedCount} availability slot(s) added")->success()->send();
         }
 
-        $this->slotForm->fill($this->getDefaultAvailabilityTimes());
+        $this->slotForm->fill($this->getDefaultSlotFormTimes());
     }
 
     public function table(Table $table): Table
@@ -615,6 +618,7 @@ class MyAvailability extends Page implements HasForms, HasTable
                 $this->getAvailabilityService()->resolveMemberId(auth()->id()) ?? 0
             ))
             ->defaultSort('date')
+            ->defaultSort('from')
             ->columns([
                 TextColumn::make('date')
                     ->label('Date')
@@ -703,5 +707,24 @@ class MyAvailability extends Page implements HasForms, HasTable
         }
 
         return $options;
+    }
+
+    protected function generateSearchableTimeOptions(): array
+    {
+        return collect($this->generateTimeOptions())
+            ->mapWithKeys(fn (string $time): array => [str_replace(':', '', $time) => $time])
+            ->all();
+    }
+
+    protected function getDefaultSlotFormTimes(): array
+    {
+        return collect($this->getDefaultAvailabilityTimes())
+            ->map(fn (string $time): string => str_replace(':', '', $time))
+            ->all();
+    }
+
+    protected function formatSlotFormTime(string $time): string
+    {
+        return substr($time, 0, 2).':'.substr($time, 2, 2);
     }
 }
